@@ -12,34 +12,40 @@ from FreeAeonFractal.FASeriesMFS import CFASeriesMFS
 from sklearn.decomposition import PCA
 
 #GPU version
-#from FreeAeonFractal.FAImageLACGPU import CFAImageLACGPU as CFAImageLAC
-#from FreeAeonFractal.FAImageFDGPU import CFAImageFDGPU as CFAImageFD
-#from FreeAeonFractal.FAImageMFSGPU import CFAImageMFSGPU as CFAImageMFS
+from FreeAeonFractal.FAImageLACGPU import CFAImageLACGPU as CFAImageLAC
+from FreeAeonFractal.FAImageFDGPU import CFAImageFDGPU as CFAImageFD
+from FreeAeonFractal.FAImageMFSGPU import CFAImageMFSGPU as CFAImageMFS
 
 #CPU version
-from FreeAeonFractal.FAImageLAC import CFAImageLAC
-from FreeAeonFractal.FAImageFD import CFAImageFD
-from FreeAeonFractal.FAImageMFS import CFAImageMFS
+#from FreeAeonFractal.FAImageLAC import CFAImageLAC
+#from FreeAeonFractal.FAImageFD import CFAImageFD
+#from FreeAeonFractal.FAImageMFS import CFAImageMFS
 
 np.set_printoptions(suppress=True, precision=8)
 
 class CImageUtils:
+
+    @staticmethod
+    def resize(img,size_shape=(256,256)):
+         return cv2.resize(img, size_shape, interpolation=cv2.INTER_LINEAR)
     
-    @staticmethod    
+    @staticmethod
     def write_image(file_name, img):
         if not file_name.lower().endswith(".exr"):
-            cv2.imwrite(file_name + ".exr", img)
-        else:
-            cv2.imwrite(file_name, img)
-            
+            file_name = file_name + ".exr"
+        params = [
+            cv2.IMWRITE_EXR_COMPRESSION,
+            cv2.IMWRITE_EXR_COMPRESSION_ZIP  #无损压缩
+        ]
+        cv2.imwrite(file_name, img.astype(np.float32), params)
+
     @staticmethod
     def read_image(file_name):
-        cv2_img = cv2.imread(file_name, cv2.IMREAD_UNCHANGED)
-        if cv2_img is None:
+        img = cv2.imread(file_name, cv2.IMREAD_UNCHANGED)
+        if img is None:
             raise FileNotFoundError(f"Failed to read EXR: {file_name}")
-            
-        return cv2_img.astype(np.float32)
-    
+        return img.astype(np.float32)
+
     @staticmethod
     def get_one_svd_image(img, tau):
         if img.ndim == 3:
@@ -96,7 +102,59 @@ class CImageUtils:
         B = np.asarray(B)
         img = np.stack([R, G, B], axis=2)
         return img
-    
+        
+    @staticmethod
+    def normalize_by_channel(imgs, dtype=np.float32, eps=1e-8):
+        if isinstance(imgs, np.ndarray) and imgs.ndim >= 2:
+            single_image = True
+            imgs_list = [imgs]
+        else:
+            single_image = False
+            imgs_list = list(imgs)
+        # -----------------------------
+        # 2. NaN / Inf 处理
+        # -----------------------------
+        processed_imgs = []
+        for img in imgs_list:
+            img = np.asarray(img)
+            finite_mask = np.isfinite(img)
+            pos_inf_val = np.nanmax(img[finite_mask]) if np.any(finite_mask) else 1.0
+            img = np.nan_to_num(
+                img,
+                nan=0.0,
+                posinf=pos_inf_val,
+                neginf=0.0
+            )
+            processed_imgs.append(img)
+        if single_image:
+            img = processed_imgs[0]
+            if img.ndim == 3:
+                if img.shape[-1] <= 10:
+                    min_val = img.min(axis=(0, 1), keepdims=True)
+                    max_val = img.max(axis=(0, 1), keepdims=True)
+                else:
+                    # CHW
+                    min_val = img.min(axis=(1, 2), keepdims=True)
+                    max_val = img.max(axis=(1, 2), keepdims=True)
+            else:
+                min_val = img.min()
+                max_val = img.max()
+
+            denom = max_val - min_val
+            denom = np.where(denom < eps, 1.0, denom)
+
+            norm_img = (img - min_val) / denom
+            return norm_img.astype(dtype)
+            
+        stack = np.stack(processed_imgs, axis=0)
+        global_min = stack.min(axis=(0, 1, 2), keepdims=True)
+        global_max = stack.max(axis=(0, 1, 2), keepdims=True)
+        denom = global_max - global_min
+        denom = np.where(denom < eps, 1.0, denom)
+        norm_stack = (stack - global_min) / denom
+        
+        return [img.astype(dtype) for img in norm_stack]
+        
     @staticmethod
     def normalize(imgs, dtype=np.float32):
         if isinstance(imgs, np.ndarray) and imgs.ndim >= 2:
@@ -145,9 +203,9 @@ class CImageUtils:
         for i, img in enumerate(imgs):
             ax = plt.subplot(rows, cols, i + 1)
             if img.ndim == 3:
-                ax.imshow(img, vmin=0, vmax=1)
+                ax.imshow(img, vmin=0, vmax=np.max(img))
             else:
-                ax.imshow(img, vmin=0, vmax=1, cmap='gray')
+                ax.imshow(img, vmin=0, vmax=np.max(img), cmap='gray')
             ax.set_title(f"{i}", fontsize=8)
             ax.axis("off")
             ax.set_aspect('equal')
@@ -291,9 +349,9 @@ class CImageMFS:
             df_B_spec = df_B_spec.rename(columns={"tau":"t(q)","Dq":"d(q)","alpha":"a(q)","f_alpha":"f(a)"}).drop(columns="D1").iloc[:128]
             values_B.append(df_B_spec[['a(q)','d(q)','f(a)']].values[0:self.m_count])
         
-        R_mfs = CImageUtils.normalize(np.array(values_R))
-        G_mfs = CImageUtils.normalize(np.array(values_G))
-        B_mfs = CImageUtils.normalize(np.array(values_B))
+        R_mfs = np.array(values_R) #CImageUtils.normalize(np.array(values_R))
+        G_mfs = np.array(values_G) #CImageUtils.normalize(np.array(values_G))
+        B_mfs = np.array(values_B) #CImageUtils.normalize(np.array(values_B))
         return R_mfs,G_mfs,B_mfs
 
     #Image list : a(q),d(q),f(a)
@@ -341,7 +399,7 @@ class CImageMFS:
             values_D.append(d[0:self.m_count])
             values_F.append(f[0:self.m_count])
 
-        A_mfs = CImageUtils.normalize(np.array(values_A))
-        D_mfs = CImageUtils.normalize(np.array(values_D))
-        F_mfs = CImageUtils.normalize(np.array(values_F))
+        A_mfs = np.array(values_A) #CImageUtils.normalize(np.array(values_A))
+        D_mfs = np.array(values_D) #CImageUtils.normalize(np.array(values_D))
+        F_mfs = np.array(values_F) #CImageUtils.normalize(np.array(values_F))
         return A_mfs,D_mfs,F_mfs

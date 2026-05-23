@@ -64,10 +64,10 @@ def main(dataset,worker,action):
     params['dataset'] = dataset
     params['data'] = df_data
 
-    batch_count = len(df_data)   #总共有多少个batch
-    batch_size = 50     #每个batch有多少个记录
+    total_count = len(df_data)   #总共有多少个记录
+    batch_size = 50              #每个batch有多少个记录
 
-    indexes_list = [list(range(start, min(start + batch_size, batch_count))) for start in range(0, batch_count, batch_size)]
+    indexes_list = [list(range(start, min(start + batch_size, batch_count))) for start in range(0, total_count, batch_size)]
     #with ThreadPoolExecutor(max_workers=worker) as executor:
     with ProcessPoolExecutor(max_workers=worker) as executor:
         futures = [executor.submit(process_one_batch, params, batch) for batch in indexes_list]
@@ -78,7 +78,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Batch fractal or multifractal calculate.")
     parser.add_argument("--dataset", choices=['train','test'], default='train', help="train or test")
     parser.add_argument("--worker", type=int, default=16, help="int 0 to 64.")
-    parser.add_argument("--action", choices=['raw','local-alpha','svd-alpha','mfs-image','image-mfs'], default='raw', help="raw/local-alpha/svd-alpha/mfs-image/image-mfs")
+    parser.add_argument("--action", choices=['raw','local-alpha','svd-alpha','mfs-image','image-mfs'], default='local-alpha', help="raw/local-alpha/svd-alpha/mfs-image/image-mfs")
     args = parser.parse_args()
     
     print(f"Root selected: {args.dataset}")
