@@ -159,9 +159,9 @@ def cala_mean():
     df_real = df_train[df_train['Target'] == 0]
     df_fake = df_train[df_train['Target'] == 1]
 
-    #mean_img,std_img = CDatasetConstruct.compute_mean_std_image(df_real['Image Path'])
-    #CImageUtils.write_image("real-mean", mean_img)
-    #CImageUtils.write_image("real-std", std_img)
+    mean_img,std_img = CDatasetConstruct.compute_mean_std_image(df_real['Image Path'])
+    CImageUtils.write_image("real-mean", mean_img)
+    CImageUtils.write_image("real-std", std_img)
   
     mean_img,std_img = CDatasetConstruct.compute_mean_std_image(df_fake['Image Path'])
     CImageUtils.write_image("fake-mean", mean_img)                    

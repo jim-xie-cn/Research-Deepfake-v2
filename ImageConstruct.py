@@ -12,14 +12,14 @@ from FreeAeonFractal.FASeriesMFS import CFASeriesMFS
 from sklearn.decomposition import PCA
 
 #GPU version
-from FreeAeonFractal.FAImageLACGPU import CFAImageLACGPU as CFAImageLAC
-from FreeAeonFractal.FAImageFDGPU import CFAImageFDGPU as CFAImageFD
-from FreeAeonFractal.FAImageMFSGPU import CFAImageMFSGPU as CFAImageMFS
+#from FreeAeonFractal.FAImageLACGPU import CFAImageLACGPU as CFAImageLAC
+#from FreeAeonFractal.FAImageFDGPU import CFAImageFDGPU as CFAImageFD
+#from FreeAeonFractal.FAImageMFSGPU import CFAImageMFSGPU as CFAImageMFS
 
 #CPU version
-#from FreeAeonFractal.FAImageLAC import CFAImageLAC
-#from FreeAeonFractal.FAImageFD import CFAImageFD
-#from FreeAeonFractal.FAImageMFS import CFAImageMFS
+from FreeAeonFractal.FAImageLAC import CFAImageLAC
+from FreeAeonFractal.FAImageFD import CFAImageFD
+from FreeAeonFractal.FAImageMFS import CFAImageMFS
 
 np.set_printoptions(suppress=True, precision=8)
 
