@@ -22,6 +22,27 @@ class CDatasetConstruct:
         dest_path = self.get_dest_folder()
         Path(dest_path).mkdir(parents=True, exist_ok=True)
 
+    @staticmethod
+    def compute_mean_std_image(image_paths):
+        sum_img = None
+        sq_sum_img = None
+        count = 0
+        for path in tqdm(image_paths):
+            img = CImageUtils.read_image(path)
+            img = CImageUtils.resize(img, (256, 256))
+            if img is None:
+                continue
+            img = img.astype(np.float64)
+            if sum_img is None:
+                sum_img = np.zeros_like(img, dtype=np.float64)
+                sq_sum_img = np.zeros_like(img, dtype=np.float64)
+            sum_img += img
+            sq_sum_img += img ** 2
+            count += 1
+        mean_img = sum_img / count
+        std_img = np.sqrt(sq_sum_img / count - mean_img ** 2)
+        return mean_img.astype(np.float32), std_img.astype(np.float32)
+
     def get_dest_folder(self):
         raw_file = self.m_item['Image Path']
         dest_file = raw_file.replace("/AI_Face_imagesV2/",f"/AI_Face_imagesV2/mfs/{self.m_dataset}/")
@@ -133,14 +154,29 @@ class CDatasetConstruct:
         
         return dest_file_list
 
+def cala_mean():
+    df_train = pd.read_csv("../AI-Face-FairnessBench/dataset/train.csv")
+    df_real = df_train[df_train['Target'] == 0]
+    df_fake = df_train[df_train['Target'] == 1]
+
+    #mean_img,std_img = CDatasetConstruct.compute_mean_std_image(df_real['Image Path'])
+    #CImageUtils.write_image("real-mean", mean_img)
+    #CImageUtils.write_image("real-std", std_img)
+  
+    mean_img,std_img = CDatasetConstruct.compute_mean_std_image(df_fake['Image Path'])
+    CImageUtils.write_image("fake-mean", mean_img)                    
+    CImageUtils.write_image("fake-std", std_img)
+
 def main():
+    return cala_mean()
+
     df_train = pd.read_csv("../AI-Face-FairnessBench/dataset/train.csv")
     item = df_train.iloc[0]
-    test = CDatasetConstruct(item, 'train', isRes=True, img_size=256, count=256)
+    test = CDatasetConstruct(item, 'train', isRes=True, img_size=256, count=128)
     t0 = time.time()
-    test.create_raw()
+    #test.create_raw()
     test.create_local_alpha()
-    test.create_svd_alpha()
+    #test.create_svd_alpha()
     test.create_image_mfs()
     test.create_mfs_image()
     print("Time used:",time.time() - t0)
