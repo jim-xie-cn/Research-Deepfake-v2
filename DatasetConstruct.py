@@ -159,13 +159,23 @@ def cala_mean():
     df_real = df_train[df_train['Target'] == 0]
     df_fake = df_train[df_train['Target'] == 1]
 
+    real_file = df_real.iloc[0]['Image Path']
+    img = CImageUtils.read_image(real_file)
+    img = CImageUtils.resize(img, (256, 256))
+    CImageUtils.write_image("./images/real", img)
+    
+    fake_file = df_fake.iloc[0]['Image Path']
+    img = CImageUtils.read_image(fake_file)
+    img = CImageUtils.resize(img, (256, 256))
+    CImageUtils.write_image("./images/fake", img)
+    
     mean_img,std_img = CDatasetConstruct.compute_mean_std_image(df_real['Image Path'])
-    CImageUtils.write_image("real-mean", mean_img)
-    CImageUtils.write_image("real-std", std_img)
+    CImageUtils.write_image("./images/real-mean", mean_img)
+    CImageUtils.write_image("./images/real-std", std_img)
   
     mean_img,std_img = CDatasetConstruct.compute_mean_std_image(df_fake['Image Path'])
-    CImageUtils.write_image("fake-mean", mean_img)                    
-    CImageUtils.write_image("fake-std", std_img)
+    CImageUtils.write_image("./images/fake-mean", mean_img)                    
+    CImageUtils.write_image("./images/fake-std", std_img)
 
 def main():
     return cala_mean()
@@ -174,9 +184,9 @@ def main():
     item = df_train.iloc[0]
     test = CDatasetConstruct(item, 'train', isRes=True, img_size=256, count=128)
     t0 = time.time()
-    #test.create_raw()
+    test.create_raw()
     test.create_local_alpha()
-    #test.create_svd_alpha()
+    test.create_svd_alpha()
     test.create_image_mfs()
     test.create_mfs_image()
     print("Time used:",time.time() - t0)

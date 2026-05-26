@@ -10,16 +10,17 @@ from FreeAeonFractal.FAImageFourier import CFAImageFourier
 from FreeAeonFractal.FAImage import CFAImage
 from FreeAeonFractal.FASeriesMFS import CFASeriesMFS
 from sklearn.decomposition import PCA
+from ImageDecompose import CImageDecompose
 
 #GPU version
-#from FreeAeonFractal.FAImageLACGPU import CFAImageLACGPU as CFAImageLAC
-#from FreeAeonFractal.FAImageFDGPU import CFAImageFDGPU as CFAImageFD
-#from FreeAeonFractal.FAImageMFSGPU import CFAImageMFSGPU as CFAImageMFS
+from FreeAeonFractal.FAImageLACGPU import CFAImageLACGPU as CFAImageLAC
+from FreeAeonFractal.FAImageFDGPU import CFAImageFDGPU as CFAImageFD
+from FreeAeonFractal.FAImageMFSGPU import CFAImageMFSGPU as CFAImageMFS
 
 #CPU version
-from FreeAeonFractal.FAImageLAC import CFAImageLAC
-from FreeAeonFractal.FAImageFD import CFAImageFD
-from FreeAeonFractal.FAImageMFS import CFAImageMFS
+#from FreeAeonFractal.FAImageLAC import CFAImageLAC
+#from FreeAeonFractal.FAImageFD import CFAImageFD
+#from FreeAeonFractal.FAImageMFS import CFAImageMFS
 
 np.set_printoptions(suppress=True, precision=8)
 
@@ -47,35 +48,9 @@ class CImageUtils:
         return img.astype(np.float32)
 
     @staticmethod
-    def get_one_svd_image(img, tau):
-        if img.ndim == 3:
-            channels = []
-            for c in range(img.shape[2]):
-                channel = img[..., c]
-                low_rank = CImageUtils.get_one_svd_image(channel, tau)
-                channels.append(low_rank)
-            return np.stack(channels, axis=2)
-        else:
-            U, S, Vt = np.linalg.svd(img, full_matrices=False)
-            S_norm = S / S.max()
-            weights = np.exp(-S_norm / tau)
-            S_soft = S * weights
-            low_rank_soft = U @ np.diag(S_soft) @ Vt
-            return low_rank_soft
-
-    @staticmethod
-    def get_svd_images(img, isRes = False, count=128):
-        all_results = []
-        if count == 1:
-            return [img]
-        for tau in np.linspace(0.01, 1, count):
-            svd_img = CImageUtils.get_one_svd_image(img, tau=tau)
-            if isRes:
-                all_results.append(img - svd_img)
-            else:
-                all_results.append(svd_img)
-        return all_results
-
+    def get_svd_images(img, count=64,isRes=False):
+        return CImageDecompose(img).get_svd_auto(count=count)
+    
     @staticmethod
     def split_image(img):
         R = img[:, :, 0]
@@ -123,8 +98,7 @@ class CImageUtils:
                 img,
                 nan=0.0,
                 posinf=pos_inf_val,
-                neginf=0.0
-            )
+                neginf=0.0)
             processed_imgs.append(img)
         if single_image:
             img = processed_imgs[0]
@@ -195,7 +169,9 @@ class CImageUtils:
         return img.astype(dtype)
     
     @staticmethod
-    def display(imgs, cols=8, cell_size=2.0):
+    def display(imgs, auto_normalize = True, cols=8, cell_size=2.0):
+        if np.max(imgs) > 1 and auto_normalize:
+            imgs = CImageUtils.normalize_by_channel(imgs)
         n = len(imgs)
         rows = int(np.ceil(n / cols))
         figsize = (cols * cell_size, rows * cell_size)
@@ -214,10 +190,9 @@ class CImageUtils:
 
 class CImageAlpha:
     
-    def __init__(self, img,isRes = False, scales = 32):
+    def __init__(self, img, scales = 32):
         self.m_img = CImageUtils.normalize(img)
         self.m_scales = scales
-        self.m_isRes = isRes
         
     def get_raw_alpha(self):
         R,G,B = CImageUtils.split_image(self.m_img)
@@ -231,7 +206,7 @@ class CImageAlpha:
         H, W = self.m_img.shape[:2]
         scales_list = np.linspace(1, min(H, W), self.m_scales)
         img_list = []
-        for im in CImageUtils.get_svd_images(self.m_img,isRes=self.m_isRes,count = count):
+        for im in CImageUtils.get_svd_images(self.m_img,count = count):
             gray = CImageUtils.get_gray(im)
             img_list.append(gray)
         alpha_map, info = CFAImageMFS.compute_alpha_map_batch(img_list,scales=scales_list,with_progress=False)
@@ -241,7 +216,7 @@ class CImageAlpha:
         H, W = self.m_img.shape[:2]
         scales_list = np.linspace(1, min(H, W), self.m_scales)
         img_list = []
-        for im in CImageUtils.get_svd_images(self.m_img,isRes=self.m_isRes,count = count):
+        for im in CImageUtils.get_svd_images(self.m_img,count = count):
             gray = CImageUtils.get_gray(im)
             bin = CImageUtils.get_binary(gray)
             img_list.append(bin)
@@ -271,7 +246,7 @@ class CImageAlpha:
         H, W = self.m_img.shape[:2]
         scales_list = np.linspace(1, min(H, W),self.m_scales)
         img_list = []
-        for im in CImageUtils.get_svd_images(self.m_img,isRes=self.m_isRes,count = count):
+        for im in CImageUtils.get_svd_images(self.m_img,count = count):
             #gray = CImageUtils.get_gray(img)
             #bin = CImageUtils.get_binary(gray)
             R,G,B = CImageUtils.split_image(im)
@@ -292,10 +267,9 @@ class CImageAlpha:
 
 class CImageMFS:
     
-    def __init__(self, img,isRes = False, count = 32):
+    def __init__(self, img, count = 32):
         self.m_img = CImageUtils.normalize(img)
         self.m_count = count
-        self.m_isRes = isRes
 
     def get_q_list(self):
         return np.linspace(-10, 10, self.m_count)
@@ -319,7 +293,7 @@ class CImageMFS:
     #Image Channel is: a(q),d(q),f(a)
     def get_mfs_image(self):
         img_list = []
-        for im in CImageUtils.get_svd_images(self.m_img,isRes=self.m_isRes,count=self.m_count):
+        for im in CImageUtils.get_svd_images(self.m_img,count=self.m_count):
             #gray = CImageUtils.get_gray(img)
             #bin = CImageUtils.get_binary(gray)
             R,G,B = CImageUtils.split_image(im)
@@ -336,6 +310,9 @@ class CImageMFS:
         for i in range(0, len(result), 3):
             item = result[i]
             df_R_mass, df_R_fit, df_R_spec = item[0],item[1],item[2]
+            if not df_R_spec.columns.tolist():
+                continue
+                
             df_R_spec = df_R_spec.rename(columns={"tau":"t(q)","Dq":"d(q)","alpha":"a(q)","f_alpha":"f(a)"}).drop(columns="D1").iloc[:128]
             values_R.append(df_R_spec[['a(q)','d(q)','f(a)']].values[0:self.m_count])
             
@@ -358,7 +335,7 @@ class CImageMFS:
     #Image Channel is: R,G,B
     def get_image_mfs(self):
         img_list = []
-        for im in CImageUtils.get_svd_images(self.m_img,isRes=self.m_isRes,count=self.m_count):
+        for im in CImageUtils.get_svd_images(self.m_img,count=self.m_count):
             #gray = CImageUtils.get_gray(img)
             #bin = CImageUtils.get_binary(gray)
             R,G,B = CImageUtils.split_image(im)
@@ -371,10 +348,13 @@ class CImageMFS:
         values_A = []
         values_D = []
         values_F = []
-        
+
         for i in range(0, len(result), 3):
             item = result[i]
             df_R_mass, df_R_fit, df_R_spec = item[0],item[1],item[2]
+            if not df_R_spec.columns.tolist():
+                continue
+
             df_R_spec = df_R_spec.rename(columns={"tau":"t(q)","Dq":"d(q)","alpha":"a(q)","f_alpha":"f(a)"}).drop(columns="D1").iloc[:128]
             
             item = result[i + 1]
