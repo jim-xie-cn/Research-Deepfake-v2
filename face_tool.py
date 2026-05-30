@@ -15,13 +15,13 @@ def detect_image(detector,source_file):
     node = None
     face_image = None
     image = CImageUtils.read_image(source_file)
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-    if image.dtype != np.uint8:
-        if image.max() <= 1.0:  
-            image = (image * 255).astype(np.uint8)
-        else:
-            image = image.astype(np.uint8)
+    #image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    
+    if image.max() <= 1.0:  
+        image = (image * 255).astype(np.float32)
+    else:
+        image = image.astype(np.float32)
+        
     if image.shape[2] == 3:
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
@@ -38,7 +38,7 @@ def detect_image(detector,source_file):
         if y > image.shape[0]:
             y = image.shape[0]
         item['box'] = [x,y,w,h]
-        if min(w,h) > 64: #图像不能太小
+        if min(w,h) > 32: #图像不能太小
             if item['confidence'] > max_confidence:
                 max_confidence = item['confidence']
                 node = item
@@ -77,24 +77,10 @@ def extract_center_crop(image, cx, cy, width, height):
     return cropped
 
 def get_face_image(detector,file_name):
-    try:
-        image = CImageUtils.read_image(file_name)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-        node,face_image = detect_image(detector,file_name)
-        if node != None:
-            return face_image
-        #if node:
-        #    x, y, w, h = node['box']
-        #    cx, cy = x + w // 2, y + h // 2
-        #    target_width = max(2 * w, 256)
-        #    target_height = max(2 * h, 256)
-        #    face_crop = extract_center_crop(image, cx, cy, target_width, target_height)
-        #   return face_crop
-    except:
-        print("failed to get face image",file_name)
-
-    return np.array([[]])
+    node,face_image = detect_image(detector,file_name)
+    if node == None:
+        return np.array([])
+    return face_image
 
 def main():
     file_name = "./images/real-mean.exr"

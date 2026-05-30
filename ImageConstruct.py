@@ -302,10 +302,8 @@ class CImageMFS:
             binary = CImageUtils.get_binary(gray)
             total_img_list.extend([gray, binary, R, G, B])
 
-        total_mfs_list = CImageMFS.get_batch_mfs(
-            total_img_list, q_count=self.m_q_count, batch_size=64
-        )
-        
+        total_mfs_list = CImageMFS.get_batch_mfs(total_img_list, q_count=self.m_q_count, batch_size=64)
+
         if len(total_mfs_list) < len(self.m_list_svd) * 5:
             raise ValueError("total_mfs_list mismatch (CFAImageMFS output unstable)")
     

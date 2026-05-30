@@ -15,6 +15,8 @@ import torch
 from pathlib import Path
 from ImageConstruct import CImageUtils,CImageAlpha,CImageMFS
 from DatasetConstruct import CDatasetConstruct
+import multiprocessing as mp
+
 np.set_printoptions(suppress=True, precision=8)
 
 def if_processed(folder,file_name):
@@ -24,65 +26,76 @@ def if_processed(folder,file_name):
 
 def process_one_batch(params,indexes):
     action = params['action']
+    dest_root = params['dest_root']
     dataset = params['dataset']
     df_data = params['data']
-
+    all_result = []   
     try:
         for index in indexes:
-            item = df_data.iloc[index]
-            test = CDatasetConstruct(item,dataset,isRes = True, count = 256)
-            #test.create_raw()
-            #test.create_local_alpha()
-            #test.create_svd_alpha()
-            #test.create_image_mfs()
-            #test.create_mfs_image()
-            
+            item = df_data.iloc[index].to_dict()
+            test = CDatasetConstruct(item,dest_root,dataset, count = 128)
             if action == 'raw':
-                test.create_raw()
+                dest_file_list = test.create_raw()
             elif action == 'local-alpha':
-                test.create_local_alpha()
-            elif action == 'svd-alpha':
-                test.create_svd_alpha()
-            elif action == 'mfs-image':
-                test.create_image_mfs()
-            elif action == 'image-mfs':
-                test.create_mfs_image()
+                dest_file_list = test.create_local_alpha()
+            elif action == 'rgb-alpha':
+                dest_file_list = test.create_rgb_alpha()
+            elif action == 'mfs':
+                dest_file_list = test.create_mfs_image()
             else:
+                dest_file_list = []
                 print("unknown action",action)
+            for f in dest_file_list:
+                item['new_file'] = f
+                all_result.append(item.copy())
 
     except Exception:
         logging.exception("failed %d", index)
 
-def main(dataset,worker,action):
+    return all_result
+
+def main(dest_root,dataset,worker,action):
     if dataset == 'train':
         df_data = pd.read_csv("../AI-Face-FairnessBench/dataset/train.csv")
     elif dataset == 'test':
         df_data = pd.read_csv("../AI-Face-FairnessBench/dataset/test.csv")  
     
+    #df_data = df_data.head(5)   
+    
     params = {}
     params['action'] = action
     params['dataset'] = dataset
+    params['dest_root'] = dest_root
     params['data'] = df_data
-
+    
+    #df_data = df_data.head(50)
     total_count = len(df_data)   #总共有多少个记录
-    batch_size = 50              #每个batch有多少个记录
+    batch_size = 5               #每个batch有多少个记录
 
-    indexes_list = [list(range(start, min(start + batch_size, batch_count))) for start in range(0, total_count, batch_size)]
+    results = []
+    ctx = mp.get_context("spawn")
+    indexes_list = [list(range(start, min(start + batch_size, total_count))) for start in range(0, total_count, batch_size)]
     #with ThreadPoolExecutor(max_workers=worker) as executor:
-    with ProcessPoolExecutor(max_workers=worker) as executor:
+    with ProcessPoolExecutor(max_workers=worker,mp_context=ctx) as executor:
         futures = [executor.submit(process_one_batch, params, batch) for batch in indexes_list]
         for future in tqdm(as_completed(futures), total=len(futures),desc=f"{dataset} {action}"):
-            pass
+            results.extend(future.result())
+    
+    if results:
+        df = pd.DataFrame(results)
+        df.to_csv(f"./dataset/{action}-{dataset}.csv")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Batch fractal or multifractal calculate.")
+    parser.add_argument("--root", type=str, default="/disk/b", help="dest images root")
     parser.add_argument("--dataset", choices=['train','test'], default='train', help="train or test")
     parser.add_argument("--worker", type=int, default=16, help="int 0 to 64.")
-    parser.add_argument("--action", choices=['raw','local-alpha','svd-alpha','mfs-image','image-mfs'], default='local-alpha', help="raw/local-alpha/svd-alpha/mfs-image/image-mfs")
+    parser.add_argument("--action", choices=['raw','local-alpha','rgb-alpha','mfs'], default='local-alpha', help="raw/local-alpha/rgb-alpha/mfs")
     args = parser.parse_args()
     
-    print(f"Root selected: {args.dataset}")
+    print(f"Root selected: {args.root}")
+    print(f"Dataset selected: {args.dataset}")
     print(f"Worker selected : {args.worker}")
     print(f"Worker selected : {args.action}")
 
-    main(args.dataset.strip(),args.worker,args.action.strip())
+    main(args.root.strip(),args.dataset.strip(),args.worker,args.action.strip())
