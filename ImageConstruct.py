@@ -2,6 +2,7 @@ import argparse
 import numpy as np
 import time,os
 from tqdm import tqdm
+import pandas as pd
 os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "1"
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 import cv2
@@ -169,217 +170,417 @@ class CImageUtils:
         return img.astype(dtype)
     
     @staticmethod
-    def display(imgs, auto_normalize = True, cols=8, cell_size=2.0):
-        if np.max(imgs) > 1 and auto_normalize:
-            imgs = CImageUtils.normalize_by_channel(imgs)
-        n = len(imgs)
+    def display(imgs, auto_normalize=True, cols=8, cell_size=2.0, title_prefix=""):
+        if isinstance(imgs, dict):
+            items = [(f"{title_prefix}{k}", v) for k, v in imgs.items()]
+        elif isinstance(imgs, (list, tuple)):
+            items = [(f"{title_prefix}{i}", img) for i, img in enumerate(imgs)]
+        else:
+            raise TypeError("imgs 必须是 list/tuple 或 dict")
+    
+        if auto_normalize and len(items) > 0:
+            try:
+                if any(np.size(im) > 0 and np.nanmax(np.asarray(im)) > 1 for _, im in items):
+                    normed = CImageUtils.normalize_by_channel([im for _, im in items])
+                    items = [(t, im) for (t, _), im in zip(items, normed)]
+            except Exception:
+                pass
+    
+        n = len(items)
+        if n == 0:
+            return
+    
         rows = int(np.ceil(n / cols))
         figsize = (cols * cell_size, rows * cell_size)
         plt.figure(figsize=figsize)
-        for i, img in enumerate(imgs):
+    
+        for i, (title, img) in enumerate(items):
             ax = plt.subplot(rows, cols, i + 1)
+            vmax = np.max(img) if np.size(img) > 0 else 1.0
             if img.ndim == 3:
-                ax.imshow(img, vmin=0, vmax=np.max(img))
+                ax.imshow(img, vmin=0, vmax=vmax)
             else:
-                ax.imshow(img, vmin=0, vmax=np.max(img), cmap='gray')
-            ax.set_title(f"{i}", fontsize=8)
+                ax.imshow(img, vmin=0, vmax=vmax, cmap="gray")
+            ax.set_title(title, fontsize=8)
             ax.axis("off")
-            ax.set_aspect('equal')
+            ax.set_aspect("equal")
+    
         plt.tight_layout()
         plt.show()
 
-class CImageAlpha:
-    
-    def __init__(self, img, scales = 32):
-        self.m_img = CImageUtils.normalize(img)
-        self.m_scales = scales
-        
-    def get_raw_alpha(self):
-        R,G,B = CImageUtils.split_image(self.m_img)
-        H, W = self.m_img.shape[:2]
-        scales_list = np.linspace(1, min(H, W), self.m_scales)
-        alpha_maps,info = CFAImageMFS.compute_alpha_map_batch([R,G,B],scales=scales_list,with_progress=False)
-        result = CImageUtils.merge_image(alpha_maps[0],alpha_maps[1],alpha_maps[2])
-        return CImageUtils.normalize(result)
-        
-    def get_gray_alpha(self,count = 128):
-        H, W = self.m_img.shape[:2]
-        scales_list = np.linspace(1, min(H, W), self.m_scales)
-        img_list = []
-        for im in CImageUtils.get_svd_images(self.m_img,count = count):
-            gray = CImageUtils.get_gray(im)
-            img_list.append(gray)
-        alpha_map, info = CFAImageMFS.compute_alpha_map_batch(img_list,scales=scales_list,with_progress=False)
-        return CImageUtils.normalize(alpha_map)
-        
-    def get_bin_alpha(self,count = 128):
-        H, W = self.m_img.shape[:2]
-        scales_list = np.linspace(1, min(H, W), self.m_scales)
-        img_list = []
-        for im in CImageUtils.get_svd_images(self.m_img,count = count):
-            gray = CImageUtils.get_gray(im)
-            bin = CImageUtils.get_binary(gray)
-            img_list.append(bin)
-        alpha_map, info = CFAImageMFS.compute_alpha_map_batch(img_list,scales=scales_list,with_progress=False)
-        return CImageUtils.normalize(alpha_map)
-
-    @staticmethod
-    def compute_alpha_map_batch_batched(img_list, scales_list, batch_size=64, with_progress=False):
-            alpha_maps_all = []
-            info_list_all = []
-            total = len(img_list)
-            start_idx = 0
-            while start_idx < total:
-                end_idx = min(start_idx + batch_size, total)
-                batch_imgs = img_list[start_idx:end_idx]
-                alpha_maps_batch, info_list_batch = CFAImageMFS.compute_alpha_map_batch(batch_imgs,scales=scales_list,with_progress=with_progress)
-
-                alpha_maps_all.extend(alpha_maps_batch)
-                info_list_all.extend(info_list_batch)
-                start_idx = end_idx
-            
-                #torch.cuda.empty_cache()
-            
-            return alpha_maps_all, info_list_all
-
-    def get_svd_alpha(self, count = 128 ):
-        H, W = self.m_img.shape[:2]
-        scales_list = np.linspace(1, min(H, W),self.m_scales)
-        img_list = []
-        for im in CImageUtils.get_svd_images(self.m_img,count = count):
-            #gray = CImageUtils.get_gray(img)
-            #bin = CImageUtils.get_binary(gray)
-            R,G,B = CImageUtils.split_image(im)
-            img_list.append(R)
-            img_list.append(G)
-            img_list.append(B)
-        
-        alpha_maps, info_list = CImageAlpha.compute_alpha_map_batch_batched(img_list,scales_list=scales_list,batch_size=64,with_progress=False)
-        merged_images = []
-        for i in range(0, len(alpha_maps), 3):
-            R = alpha_maps[i]
-            G = alpha_maps[i + 1]
-            B = alpha_maps[i + 2]
-            merged = CImageUtils.merge_image(R, G, B)
-            merged_images.append(merged)
-            
-        return  CImageUtils.normalize(merged_images)
-
 class CImageMFS:
     
-    def __init__(self, img, count = 32):
-        self.m_img = CImageUtils.normalize(img)
-        self.m_count = count
+    def __init__(self, image, q_count=128):
+        self.m_image = image
+        self.m_q_count = q_count
+        self.m_list_svd = []
+        self.m_df_mfs = pd.DataFrame()
 
-    def get_q_list(self):
-        return np.linspace(-10, 10, self.m_count)
-    
     @staticmethod
-    def get_batch_mfs_batched(img_list, q_list=None, batch_size=64, with_progress=False):
-        result_all = []
+    def df_to_image(df: pd.DataFrame, q_count: int = None, n_count: int = None):
+        required_cols = ["q", "n", "a(q)", "d(q)", "f(a)"]
+        miss = [c for c in required_cols if c not in df.columns]
+        if miss:
+            raise ValueError(f"缺少列: {miss}")
+    
+        # 固定 q 轴
+        if q_count is None:
+            q_sorted = np.sort(df["q"].dropna().unique())
+        else:
+            # 若你q是linspace(-10,10,q_count)，建议直接固定这个轴
+            q_sorted = np.linspace(-10, 10, q_count)
+    
+        # 固定 n 轴
+        if n_count is None:
+            n_sorted = np.sort(df["n"].dropna().unique())
+        else:
+            n_sorted = np.arange(n_count)
+    
+        R_df = df.pivot(index="q", columns="n", values="a(q)").reindex(index=q_sorted, columns=n_sorted)
+        G_df = df.pivot(index="q", columns="n", values="d(q)").reindex(index=q_sorted, columns=n_sorted)
+        B_df = df.pivot(index="q", columns="n", values="f(a)").reindex(index=q_sorted, columns=n_sorted)
+    
+        R = R_df.to_numpy(dtype=np.float32)
+        G = G_df.to_numpy(dtype=np.float32)
+        B = B_df.to_numpy(dtype=np.float32)
+    
+        rgb = np.dstack([R, G, B]).astype(np.float32)
+        rgb = np.nan_to_num(rgb, nan=0.0, posinf=1.0, neginf=0.0)
+        return rgb
+
+    @staticmethod
+    def get_batch_mfs(img_list, q_count=128, batch_size=64, with_progress=False):
+        """
+        返回: mfs_list[list[pd.DataFrame]]
+        每个 df 期望包含列: q, a(q), d(q), f(a)
+        """
+        mfs_list = []
         total = len(img_list)
+        q_list = np.linspace(-10, 10, q_count)
         start_idx = 0
+
         while start_idx < total:
             end_idx = min(start_idx + batch_size, total)
             batch_imgs = img_list[start_idx:end_idx]
-            result_batch = CFAImageMFS.get_batch_mfs(batch_imgs,q_list=q_list,with_progress=with_progress)
-            result_all.extend(result_batch)
+
+            result_batch = CFAImageMFS.get_batch_mfs(
+                batch_imgs,
+                q_list=q_list,
+                with_progress=with_progress
+            )
+
+            for item in result_batch:
+                df_mass, df_fit, df_spec = item[0], item[1], item[2]
+                if isinstance(df_spec, pd.DataFrame) and (not df_spec.empty):
+                    df_spec = (df_spec.rename(columns={
+                            "tau": "t(q)",
+                            "Dq": "d(q)",
+                            "alpha": "a(q)",
+                            "f_alpha": "f(a)"
+                        })
+                        .drop(columns=["D1"], errors="ignore")
+                    )
+                    df_spec = df_spec.iloc[:q_count].copy()
+                    mfs_list.append(df_spec)
+                else:
+                    mfs_list.append(pd.DataFrame())
+
             start_idx = end_idx
 
-            #torch.cuda.empty_cache()
-        return result_all
+        return mfs_list
 
-    #Image list : R,G,B
-    #Image Channel is: a(q),d(q),f(a)
-    def get_mfs_image(self):
-        img_list = []
-        for im in CImageUtils.get_svd_images(self.m_img,count=self.m_count):
-            #gray = CImageUtils.get_gray(img)
-            #bin = CImageUtils.get_binary(gray)
-            R,G,B = CImageUtils.split_image(im)
-            img_list.append(R)
-            img_list.append(G)
-            img_list.append(B)
+    def parse_svd(self, auto_normalize=True):
+        self.m_list_svd = CImageDecompose(self.m_image).get_svd_auto(count=self.m_q_count)
+        if auto_normalize:
+            self.m_list_svd = CImageUtils.normalize_by_channel(self.m_list_svd)
 
-        q_list = self.get_q_list()
-        result = CImageMFS.get_batch_mfs_batched(img_list,q_list = q_list, batch_size = 64, with_progress=False )
-        values_R = []
-        values_G = []
-        values_B = []
+    def parse_mfs(self):
+        total_img_list = []
+        for image in self.m_list_svd:
+            R, G, B = CImageUtils.split_image(image)
+            gray = CImageUtils.get_gray(image)
+            binary = CImageUtils.get_binary(gray)
+            total_img_list.extend([gray, binary, R, G, B])
+
+        total_mfs_list = CImageMFS.get_batch_mfs(
+            total_img_list, q_count=self.m_q_count, batch_size=64
+        )
         
-        for i in range(0, len(result), 3):
-            item = result[i]
-            df_R_mass, df_R_fit, df_R_spec = item[0],item[1],item[2]
-            if not df_R_spec.columns.tolist():
+        if len(total_mfs_list) < len(self.m_list_svd) * 5:
+            raise ValueError("total_mfs_list mismatch (CFAImageMFS output unstable)")
+    
+        result = []
+        for i in range(len(self.m_list_svd)):
+            base = i * 5
+            names = ["gray", "binary", "R", "G", "B"]
+            dfs = []
+
+            for j, name in enumerate(names):
+                df_tmp = total_mfs_list[base + j]
+                if not isinstance(df_tmp, pd.DataFrame):
+                    df_tmp = pd.DataFrame()
+                df_tmp = df_tmp.copy()
+                df_tmp["img"] = name
+                dfs.append(df_tmp)
+
+            df_mfs = pd.concat(dfs, ignore_index=True).reset_index(drop=True)
+            df_mfs["n"] = i
+            result.append(df_mfs)
+
+        self.m_df_mfs = pd.concat(result, ignore_index=True).reset_index(drop=True)
+
+    def parse(self):
+        self.parse_svd()
+        self.parse_mfs()
+
+    def get_svd(self):
+        return self.m_list_svd
+
+    def get_mfs(self):
+        return self.m_df_mfs
+
+    def get_mfs_images(self, size_shape=None):
+        result = {}
+        df_mfs = self.get_mfs()
+        n_count = len(self.m_list_svd)
+        for img, df_tmp in df_mfs.groupby("img"):
+            result[img] = CImageMFS.df_to_image(df_tmp, q_count=self.m_q_count, n_count=n_count)
+            if size_shape:
+                result[img] = CImageUtils.resize(result[img], size_shape)
+        return result
+
+class CImageFD:
+    def __init__(self,image,svd_count=128,max_scales=32):
+        self.m_image=image
+        self.m_svd_count=svd_count
+        self.m_max_scales=max_scales
+        self.m_list_svd=[]
+        self.m_df_fd=pd.DataFrame()
+        
+    @staticmethod
+    def df_to_image(df, n_count=None):
+        required=["n","kind","gray","R","G","B"]
+        miss=[c for c in required if c not in df.columns]
+        if miss:
+            raise ValueError(f"缺少列: {miss}")
+    
+        kind_map={"bc":0,"dbc":1,"sdbc":2}
+        if n_count is None:
+            n_sorted=np.sort(df["n"].dropna().unique())
+        else:
+            n_sorted=np.arange(n_count)
+        img=np.zeros((4,len(n_sorted),3),dtype=np.float32)
+        for _,row in df.iterrows():
+            n=int(row["n"])
+            c=kind_map.get(row["kind"],-1)
+            if c<0 or n>=len(n_sorted):
                 continue
-                
-            df_R_spec = df_R_spec.rename(columns={"tau":"t(q)","Dq":"d(q)","alpha":"a(q)","f_alpha":"f(a)"}).drop(columns="D1").iloc[:128]
-            values_R.append(df_R_spec[['a(q)','d(q)','f(a)']].values[0:self.m_count])
-            
-            item = result[i + 1]
-            df_G_mass, df_G_fit, df_G_spec = item[0],item[1],item[2]
-            df_G_spec = df_G_spec.rename(columns={"tau":"t(q)","Dq":"d(q)","alpha":"a(q)","f_alpha":"f(a)"}).drop(columns="D1").iloc[:128]
-            values_G.append(df_G_spec[['a(q)','d(q)','f(a)']].values[0:self.m_count])
+            img[0,n,c]=row["gray"]
+            img[1,n,c]=row["R"]
+            img[2,n,c]=row["G"]
+            img[3,n,c]=row["B"]
+        return img
         
-            item = result[i + 2]
-            df_B_mass, df_B_fit, df_B_spec = item[0],item[1],item[2]
-            df_B_spec = df_B_spec.rename(columns={"tau":"t(q)","Dq":"d(q)","alpha":"a(q)","f_alpha":"f(a)"}).drop(columns="D1").iloc[:128]
-            values_B.append(df_B_spec[['a(q)','d(q)','f(a)']].values[0:self.m_count])
-        
-        R_mfs = np.array(values_R) #CImageUtils.normalize(np.array(values_R))
-        G_mfs = np.array(values_G) #CImageUtils.normalize(np.array(values_G))
-        B_mfs = np.array(values_B) #CImageUtils.normalize(np.array(values_B))
-        return R_mfs,G_mfs,B_mfs
+    @staticmethod
+    def _safe_fd_value(item):
+        return item.get("fd",np.nan) if isinstance(item,dict) else np.nan
 
-    #Image list : a(q),d(q),f(a)
-    #Image Channel is: R,G,B
-    def get_image_mfs(self):
+    @staticmethod
+    def _batch_call(func,img_list,max_scales=32,batch_size=64,with_progress=False):
+        result=[];total=len(img_list);start_idx=0
+        while start_idx<total:
+            end_idx=min(start_idx+batch_size,total)
+            result.extend(func(img_list[start_idx:end_idx],max_scales=max_scales,with_progress=with_progress))
+            start_idx=end_idx
+        return result
+
+    @staticmethod
+    def get_batch_fd(img_list,max_scales=32,batch_size=64,with_progress=False):
+        gray_rgb_list=[];gray_bin_list=[]
+        for image in img_list:
+            R,G,B=CImageUtils.split_image(image)
+            gray=CImageUtils.get_gray(image)
+            gray_rgb_list.extend([gray,R,G,B])
+            gray_bin_list.extend([
+                CImageUtils.get_binary(gray),
+                CImageUtils.get_binary(R),
+                CImageUtils.get_binary(G),
+                CImageUtils.get_binary(B)
+            ])
+        fd_bc_all=CImageFD._batch_call(CFAImageFD.get_batch_bc,gray_bin_list,max_scales=max_scales,batch_size=batch_size,with_progress=with_progress)
+        fd_dbc_all=CImageFD._batch_call(CFAImageFD.get_batch_dbc,gray_rgb_list,max_scales=max_scales,batch_size=batch_size,with_progress=with_progress)
+        fd_sdbc_all=CImageFD._batch_call(CFAImageFD.get_batch_sdbc,gray_rgb_list,max_scales=max_scales,batch_size=batch_size,with_progress=with_progress)
+
+        result=[]
+        names=["gray","R","G","B"]
+
+        for i in range(len(img_list)):
+            base=i*4
+
+            row_bc={
+                "n":i,
+                "kind":"bc",
+                "gray":CImageFD._safe_fd_value(fd_bc_all[base+0]) if base+0<len(fd_bc_all) else np.nan,
+                "R":CImageFD._safe_fd_value(fd_bc_all[base+1]) if base+1<len(fd_bc_all) else np.nan,
+                "G":CImageFD._safe_fd_value(fd_bc_all[base+2]) if base+2<len(fd_bc_all) else np.nan,
+                "B":CImageFD._safe_fd_value(fd_bc_all[base+3]) if base+3<len(fd_bc_all) else np.nan
+            }
+
+            row_dbc={"n":i,"kind":"dbc"}
+            row_sdbc={"n":i,"kind":"sdbc"}
+
+            for j,nm in enumerate(names):
+                idx=base+j
+                row_dbc[nm]=CImageFD._safe_fd_value(fd_dbc_all[idx]) if idx<len(fd_dbc_all) else np.nan
+                row_sdbc[nm]=CImageFD._safe_fd_value(fd_sdbc_all[idx]) if idx<len(fd_sdbc_all) else np.nan
+
+            result.append(pd.DataFrame([row_bc,row_dbc,row_sdbc]))
+
+        return result
+
+    def parse_svd(self,auto_normalize=True):
+        self.m_list_svd=CImageDecompose(self.m_image).get_svd_auto(count=self.m_svd_count)
+        if auto_normalize:
+            self.m_list_svd=CImageUtils.normalize_by_channel(self.m_list_svd)
+
+    def parse_fd(self,batch_size=64,with_progress=False):
+        total_fd_list=CImageFD.get_batch_fd(self.m_list_svd,max_scales=self.m_max_scales,batch_size=batch_size,with_progress=with_progress)
+        result=[]
+        for df_fd in total_fd_list:
+            if isinstance(df_fd,pd.DataFrame) and not df_fd.empty:
+                result.append(df_fd)
+        self.m_df_fd=pd.concat(result,ignore_index=True) if result else pd.DataFrame(columns=["n","kind","gray","R","G","B"])
+
+    def parse(self,batch_size=64,with_progress=False):
+        self.parse_svd()
+        self.parse_fd(batch_size=batch_size,with_progress=with_progress)
+
+    def get_svd(self):
+        return self.m_list_svd
+
+    def get_fd(self):
+        return self.m_df_fd
+
+    '''
+    H: 4 (Gray,R,G,B)
+    W: n 
+    C: 3 (bc,dbc,sdbc)
+    '''
+    def get_fd_image(self, size_shape=None):
+        img = CImageFD.df_to_image(self.m_df_fd)
+        if size_shape:
+            img=CImageUtils.resize(img,size_shape)
+        return img
+
+class CImageAlpha:
+    def __init__(self, img, svd_count=128, max_scales=32):
+        self.m_img = img
+        self.svd_count = svd_count + 1
+        self.max_scales = max_scales
+        
+    def _get_scales(self):
+        H, W = self.m_img.shape[:2]
+        max_scale = max(4, min(H, W) // 4)
+        scales = np.linspace(2, max_scale, self.max_scales)
+        scales = np.unique(scales.astype(np.int32))
+        if len(scales) < 4:
+            scales = np.array([2, 4, 8, 16], dtype=np.int32)
+        return scales
+
+    def _get_svd_images(self):
+        imgs = CImageUtils.get_svd_images(self.m_img, count=self.svd_count)
+        if isinstance(imgs, tuple):
+            imgs = imgs[0]
+        safe_imgs = []
+        for im in imgs:
+            im = np.asarray(im)
+            if np.std(im) > 1e-6:
+                safe_imgs.append(im)
+        return safe_imgs[:self.svd_count - 1]
+
+    @staticmethod
+    def compute_alpha_map_batch(img_list, scales_list, batch_size=64, with_progress=False):
+        alpha_all = []
+        info_all = []
+        start = 0
+        total = len(img_list)
+        while start < total:
+            end = min(start + batch_size, total)
+            alpha, info = CFAImageMFS.compute_alpha_map_batch(img_list[start:end],
+                                                              scales=scales_list,
+                                                              with_progress=with_progress)
+            alpha_all.extend(alpha)
+            info_all.extend(info)
+            start = end
+        return alpha_all, info_all
+        
+    @staticmethod
+    def _clean_alpha(alpha):
+        alpha = np.asarray(alpha, dtype=np.float32)
+        if np.isnan(alpha).mean() > 0.75:
+            return None
+        alpha = np.nan_to_num(alpha, nan=0.0, posinf=np.max(alpha), neginf=0.0)
+        return alpha
+
+    def get_raw_alpha(self):
+        R, G, B = CImageUtils.split_image(self.m_img)
+        scales = self._get_scales()
+        alpha, _ = CImageAlpha.compute_alpha_map_batch([R, G, B],
+                                                       scales_list=scales,
+                                                       batch_size=3)
+        alpha = [self._clean_alpha(a) for a in alpha]
+        return CImageUtils.merge_image(alpha[0], alpha[1], alpha[2])
+
+    def get_gray_alpha(self):
+        svd = self._get_svd_images()
+        scales = self._get_scales()
         img_list = []
-        for im in CImageUtils.get_svd_images(self.m_img,count=self.m_count):
-            #gray = CImageUtils.get_gray(img)
-            #bin = CImageUtils.get_binary(gray)
-            R,G,B = CImageUtils.split_image(im)
-            img_list.append(R)
-            img_list.append(G)
-            img_list.append(B)
+        valid_index = []
+        for i, im in enumerate(svd):
+            gray = CImageUtils.get_gray(im)
+            if np.std(gray) > 1e-6:
+                img_list.append(gray)
+                valid_index.append(i)
+        if len(img_list) == 0:
+            return []
+        alpha, _ = CImageAlpha.compute_alpha_map_batch(img_list,scales_list=scales)
 
-        q_list = self.get_q_list()
-        result = CImageMFS.get_batch_mfs_batched(img_list,q_list = q_list, batch_size = 64, with_progress=False )
-        values_A = []
-        values_D = []
-        values_F = []
+        alpha = [self._clean_alpha(a) for a in alpha]
+        return alpha
 
-        for i in range(0, len(result), 3):
-            item = result[i]
-            df_R_mass, df_R_fit, df_R_spec = item[0],item[1],item[2]
-            if not df_R_spec.columns.tolist():
-                continue
+    def get_bin_alpha(self):
+        svd = self._get_svd_images()
+        scales = self._get_scales()
+        img_list = []
+        for im in svd:
+            gray = CImageUtils.get_gray(im)
+            binary = CImageUtils.get_binary(gray)
+            img_list.append(binary)
+        if len(img_list) == 0:
+            return []
+        alpha, _ = CImageAlpha.compute_alpha_map_batch(img_list,scales_list=scales)
+        return [self._clean_alpha(a) for a in alpha]
 
-            df_R_spec = df_R_spec.rename(columns={"tau":"t(q)","Dq":"d(q)","alpha":"a(q)","f_alpha":"f(a)"}).drop(columns="D1").iloc[:128]
-            
-            item = result[i + 1]
-            df_G_mass, df_G_fit, df_G_spec = item[0],item[1],item[2]
-            df_G_spec = df_G_spec.rename(columns={"tau":"t(q)","Dq":"d(q)","alpha":"a(q)","f_alpha":"f(a)"}).drop(columns="D1").iloc[:128]
-        
-            item = result[i + 2]
-            df_B_mass, df_B_fit, df_B_spec = item[0],item[1],item[2]
-            df_B_spec = df_B_spec.rename(columns={"tau":"t(q)","Dq":"d(q)","alpha":"a(q)","f_alpha":"f(a)"}).drop(columns="D1").iloc[:128]
+    def get_rgb_alpha(self):
+        svd = self._get_svd_images()
+        scales = self._get_scales()
+        img_list = []
+        svd_index = []
+        for i, im in enumerate(svd):
+            R, G, B = CImageUtils.split_image(im)
+            img_list.extend([R, G, B])
+            svd_index.extend([i, i, i])
+        if len(img_list) == 0:
+            return []
+        alpha, _ = CImageAlpha.compute_alpha_map_batch(img_list,scales_list=scales)
+        alpha = [self._clean_alpha(a) for a in alpha]
+        if len(alpha) < len(svd) * 3:
+            raise ValueError("Alpha length mismatch (CFAImageMFS output unstable)")
+        merged = []
+        for i in range(len(svd)):
+            base = 3 * i
+            merged.append(CImageUtils.merge_image(alpha[base],alpha[base+1],alpha[base+2]))
+        return merged
 
-            a = np.stack([df_R_spec['a(q)'].values,
-                 df_G_spec['a(q)'].values,
-                 df_B_spec['a(q)'].values], axis=-1) 
-            d = np.stack([df_R_spec['d(q)'].values,
-                 df_G_spec['d(q)'].values,
-                 df_B_spec['d(q)'].values], axis=-1)  
-            f = np.stack([df_R_spec['f(a)'].values,
-                 df_G_spec['f(a)'].values,
-                 df_B_spec['f(a)'].values], axis=-1)
-            
-            values_A.append(a[0:self.m_count])
-            values_D.append(d[0:self.m_count])
-            values_F.append(f[0:self.m_count])
-
-        A_mfs = np.array(values_A) #CImageUtils.normalize(np.array(values_A))
-        D_mfs = np.array(values_D) #CImageUtils.normalize(np.array(values_D))
-        F_mfs = np.array(values_F) #CImageUtils.normalize(np.array(values_F))
-        return A_mfs,D_mfs,F_mfs
+    def get_svd(self):
+        return self._get_svd_images()

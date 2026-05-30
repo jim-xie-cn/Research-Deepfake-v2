@@ -24,7 +24,7 @@ class CImageSimilarity:
         return idx
 
     @staticmethod
-    def display_plots(df, x, ys, kind="lineplot", cols=None, cell_size=3.0, **kwargs):
+    def display_plots(df, x, ys, kind="lineplot", cols=None, cell_size=3.0, title = None, **kwargs):
         """
         layout 固定为 row：优先一行排满，最多 8 列
         """
@@ -43,7 +43,10 @@ class CImageSimilarity:
         for i, y in enumerate(ys):
             ax = axes[i]
             plot_func(data=df, x=x, y=y, ax=ax, **kwargs)
-            ax.set_title(y, fontsize=9)
+            if title != None:
+                ax.set_title(f"{title}-{y}", fontsize=9)
+            else:
+                ax.set_title(y, fontsize=9)
             ax.grid(True, alpha=0.3)
 
         for j in range(n, rows * cols):
