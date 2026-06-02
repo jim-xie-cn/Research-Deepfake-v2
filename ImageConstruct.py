@@ -35,11 +35,18 @@ class CImageUtils:
     def write_image(file_name, img):
         if not file_name.lower().endswith(".exr"):
             file_name = file_name + ".exr"
+
+        if img.dtype == np.uint8:
+            img_float = img.astype(np.float32) / 255.0
+        else:
+            img_float = img.astype(np.float32)
+        image = cv2.cvtColor(img_float, cv2.COLOR_RGB2BGR)
+
         params = [
             cv2.IMWRITE_EXR_COMPRESSION,
             cv2.IMWRITE_EXR_COMPRESSION_ZIP  #无损压缩
         ]
-        cv2.imwrite(file_name, img.astype(np.float32), params)
+        cv2.imwrite(file_name, image.astype(np.float32), params)
 
     @staticmethod
     def read_image(file_name):

@@ -33,7 +33,7 @@ def process_one_batch(params,indexes):
     try:
         for index in indexes:
             item = df_data.iloc[index].to_dict()
-            test = CDatasetConstruct(item,dest_root,dataset, count = 128)
+            test = CDatasetConstruct(item,dest_root,dataset, count = 64)
             if action == 'raw':
                 dest_file_list = test.create_raw()
             elif action == 'local-alpha':
@@ -55,11 +55,16 @@ def process_one_batch(params,indexes):
     return all_result
 
 def main(dest_root,dataset,worker,action):
-    if dataset == 'train':
-        df_data = pd.read_csv("../AI-Face-FairnessBench/dataset/train.csv")
-    elif dataset == 'test':
-        df_data = pd.read_csv("../AI-Face-FairnessBench/dataset/test.csv")  
+    if action == 'raw':
+        file_name = f"../AI-Face-FairnessBench/dataset/{dataset}.csv"
+    elif action in ['local-alpha','rgb-alpha','mfs']:
+        file_name = f"./dataset/raw-{dataset}.csv"
+    else:
+        print(f"Action is not supported {action},{dataset}")
     
+    df_data = pd.read_csv(file_name)
+    print(df_data['Image Path'])
+    print(file_name)
     #df_data = df_data.head(5)   
     
     params = {}
@@ -68,15 +73,16 @@ def main(dest_root,dataset,worker,action):
     params['dest_root'] = dest_root
     params['data'] = df_data
     
-    #df_data = df_data.head(50)
+    #df_data = df_data.tail(50)
     total_count = len(df_data)   #总共有多少个记录
-    batch_size = 5               #每个batch有多少个记录
+    batch_size = 1               #每个batch有多少个记录
 
     results = []
     ctx = mp.get_context("spawn")
     indexes_list = [list(range(start, min(start + batch_size, total_count))) for start in range(0, total_count, batch_size)]
-    #with ThreadPoolExecutor(max_workers=worker) as executor:
-    with ProcessPoolExecutor(max_workers=worker,mp_context=ctx) as executor:
+    with ThreadPoolExecutor(max_workers=worker) as executor:
+    #with ProcessPoolExecutor(max_workers=worker,mp_context=ctx) as executor:
+    #with ProcessPoolExecutor(max_workers=worker) as executor:
         futures = [executor.submit(process_one_batch, params, batch) for batch in indexes_list]
         for future in tqdm(as_completed(futures), total=len(futures),desc=f"{dataset} {action}"):
             results.extend(future.result())
@@ -88,8 +94,8 @@ def main(dest_root,dataset,worker,action):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Batch fractal or multifractal calculate.")
     parser.add_argument("--root", type=str, default="/disk/b", help="dest images root")
-    parser.add_argument("--dataset", choices=['train','test'], default='train', help="train or test")
-    parser.add_argument("--worker", type=int, default=16, help="int 0 to 64.")
+    parser.add_argument("--dataset", choices=['train','test'], default='test', help="train or test")
+    parser.add_argument("--worker", type=int, default=8, help="int 0 to 64.")
     parser.add_argument("--action", choices=['raw','local-alpha','rgb-alpha','mfs'], default='local-alpha', help="raw/local-alpha/rgb-alpha/mfs")
     args = parser.parse_args()
     

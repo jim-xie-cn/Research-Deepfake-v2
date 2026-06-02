@@ -38,7 +38,7 @@ def detect_image(detector,source_file):
         if y > image.shape[0]:
             y = image.shape[0]
         item['box'] = [x,y,w,h]
-        if min(w,h) > 32: #图像不能太小
+        if min(w,h) > 64: #图像不能太小
             if item['confidence'] > max_confidence:
                 max_confidence = item['confidence']
                 node = item

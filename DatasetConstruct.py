@@ -68,6 +68,7 @@ class CDatasetConstruct:
         return dest_path
 
     def processed(self,file_list):
+        #return False
         return all(os.path.exists(f) for f in file_list)
 
     def create_raw(self):
@@ -76,32 +77,33 @@ class CDatasetConstruct:
         src_file = self.m_item['Image Path']
         
         if self.processed([dest_file]):
+            print("processed",dest_file)
             return [dest_file]
-
+        
         img = CDatasetConstruct.read_face_image(src_file)
         if len(img) == 0:
             print(f"Failed to read image: {src_file}")
             return []
         
-        img = CImageUtils.resize(img,self.m_img_size)
+        #img = CImageUtils.resize(img,self.m_img_size)
         CImageUtils.write_image(dest_file,img)
         
         return [dest_file]
 
     def create_local_alpha(self):
         dest_path = self.get_dest_folder()
-        src_file = self.m_item['Image Path']
+        src_file = self.m_item['new_file']
         dest_file = f"{dest_path}/alpha.exr"
         
         if self.processed([dest_file]):
             return [dest_file]
 
-        img = CDatasetConstruct.read_face_image(src_file)
-        if len(img) == 0:
+        img = CImageUtils.read_image(src_file)
+        if img is None:
             print(f"Failed to read image: {src_file}")
             return []
 
-        img = CImageUtils.resize(img,self.m_img_size)
+        #img = CImageUtils.resize(img,self.m_img_size)
         alpha = CImageAlpha(img).get_raw_alpha()
         CImageUtils.write_image(dest_file, alpha)  
 
@@ -109,7 +111,7 @@ class CDatasetConstruct:
 
     def create_svd(self):
         dest_path = self.get_dest_folder()
-        src_file = self.m_item['Image Path']
+        src_file = self.m_item['new_file']
         
         dest_file_list = []
         for i in range(0,self.m_count):
@@ -119,12 +121,12 @@ class CDatasetConstruct:
         if self.processed(dest_file_list):
             return dest_file_list
 
-        img = CDatasetConstruct.read_face_image(src_file)
-        if len(img) == 0:
+        img = CImageUtils.read_image(src_file)
+        if img is None:
             print(f"Failed to read image: {src_file}")
             return []
-        img = CImageUtils.resize(img,self.m_img_size)
-
+        
+        #img = CImageUtils.resize(img,self.m_img_size)
         alpha = CImageAlpha(img,svd_count=self.m_count, max_scales=32).get_svd()
         for file_name,alpha_image in zip(dest_file_list,alpha):
             CImageUtils.write_image(file_name, alpha_image)
@@ -133,7 +135,7 @@ class CDatasetConstruct:
 
     def create_gray_alpha(self):
         dest_path = self.get_dest_folder()
-        src_file = self.m_item['Image Path']
+        src_file = self.m_item['new_file']
 
         dest_file_list = []
         for i in range(0,self.m_count):
@@ -143,12 +145,12 @@ class CDatasetConstruct:
         if self.processed(dest_file_list):
             return dest_file_list
 
-        img = CDatasetConstruct.read_face_image(src_file)
-        if len(img) == 0:
+        img = CImageUtils.read_image(src_file)
+        if img is None:
             print(f"Failed to read image: {src_file}")
             return []
-        img = CImageUtils.resize(img,self.m_img_size)
-
+        
+        #img = CImageUtils.resize(img,self.m_img_size)
         alpha = CImageAlpha(img,svd_count=self.m_count, max_scales=32).get_gray_alpha()
         for file_name,alpha_image in zip(dest_file_list,alpha):
             CImageUtils.write_image(file_name, alpha_image)
@@ -157,7 +159,7 @@ class CDatasetConstruct:
 
     def create_binary_alpha(self):
         dest_path = self.get_dest_folder()
-        src_file = self.m_item['Image Path']
+        src_file = self.m_item['new_file']
 
         dest_file_list = []
         for i in range(0,self.m_count):
@@ -167,12 +169,12 @@ class CDatasetConstruct:
         if self.processed(dest_file_list):
             return dest_file_list
 
-        img = CDatasetConstruct.read_face_image(src_file)
-        if len(img) == 0:
+        img = CImageUtils.read_image(src_file)
+        if img is None:
             print(f"Failed to read image: {src_file}")
             return []
-        img = CImageUtils.resize(img,self.m_img_size)
-
+        
+        #img = CImageUtils.resize(img,self.m_img_size)
         alpha = CImageAlpha(img,svd_count=self.m_count, max_scales=32).get_bin_alpha()
         for file_name,alpha_image in zip(dest_file_list,alpha):
             CImageUtils.write_image(file_name, alpha_image)
@@ -181,7 +183,7 @@ class CDatasetConstruct:
     
     def create_rgb_alpha(self):
         dest_path = self.get_dest_folder()
-        src_file = self.m_item['Image Path']
+        src_file = self.m_item['new_file']
 
         dest_file_list = []
         for i in range(0,self.m_count):
@@ -191,12 +193,12 @@ class CDatasetConstruct:
         if self.processed(dest_file_list):
             return dest_file_list
 
-        img = CDatasetConstruct.read_face_image(src_file)
-        if len(img) == 0:
+        img = CImageUtils.read_image(src_file)
+        if img is None:
             print(f"Failed to read image: {src_file}")
             return []
-        img = CImageUtils.resize(img,self.m_img_size)
-
+        
+        #img = CImageUtils.resize(img,self.m_img_size)
         alpha = CImageAlpha(img,svd_count=self.m_count, max_scales=32).get_rgb_alpha()
         for file_name,alpha_image in zip(dest_file_list,alpha):
             CImageUtils.write_image(file_name, alpha_image)
@@ -205,7 +207,7 @@ class CDatasetConstruct:
 
     def create_mfs_image(self):
         dest_path = self.get_dest_folder()
-        src_file = self.m_item['Image Path']
+        src_file = self.m_item['new_file']
 
         dest_file_list = []
         img_names = ["gray", "binary", "R", "G", "B"]
@@ -216,12 +218,12 @@ class CDatasetConstruct:
         if self.processed(dest_file_list):
             return dest_file_list
 
-        img = CDatasetConstruct.read_face_image(src_file)
-        if len(img) == 0:
+        img = CImageUtils.read_image(src_file)
+        if img is None:
             print(f"Failed to read image: {src_file}")
             return []
-        img = CImageUtils.resize(img,self.m_img_size)
-
+        
+        #img = CImageUtils.resize(img,self.m_img_size)
         MFS = CImageMFS(img,q_count=self.m_count)
         MFS.parse()
         mfs_images = MFS.get_mfs_images()
@@ -252,18 +254,20 @@ def cala_mean():
     CImageUtils.write_image("./images/fake-std", std_img)
 
 def main():
-    #return cala_mean()
+    return cala_mean()
     df_train = pd.read_csv("../AI-Face-FairnessBench/dataset/train.csv")
     item = df_train.iloc[0]
-    test = CDatasetConstruct(item,"/disk/b", 'train', img_size=256, count=256)
+    test = CDatasetConstruct(item,"/disk/b", 'train', img_size=256, count=64)
+    print(item['Image Path'])
+    print(test.get_dest_folder())
     t0 = time.time()
     test.create_raw()
-    test.create_local_alpha()
-    test.create_svd()
-    test.create_gray_alpha()
-    test.create_binary_alpha()
-    test.create_rgb_alpha()
-    test.create_mfs_image()
+    #test.create_local_alpha()
+    #test.create_svd()
+    #test.create_gray_alpha()
+    #test.create_binary_alpha()
+    #test.create_rgb_alpha()
+    #test.create_mfs_image()
     print("Time used:",time.time() - t0)
 
 if __name__ == "__main__":
