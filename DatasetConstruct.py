@@ -43,9 +43,11 @@ class CDatasetConstruct:
         sq_sum_img = None
         count = 0
         for path in tqdm(image_paths):
-            img = CDatasetConstruct.read_face_image(path)
+            img = CImageUtils.read_image(path)  
+            #aimg = CDatasetConstruct.read_face_image(path)
             if len(img) == 0:
                 continue
+            #print(path.split("/")[3])
             img = CImageUtils.resize(img, (256, 256))
             img = img.astype(np.float64)
             
@@ -77,7 +79,7 @@ class CDatasetConstruct:
         src_file = self.m_item['Image Path']
         
         if self.processed([dest_file]):
-            print("processed",dest_file)
+            #print("processed",dest_file)
             return [dest_file]
         
         img = CDatasetConstruct.read_face_image(src_file)
@@ -101,12 +103,17 @@ class CDatasetConstruct:
         img = CImageUtils.read_image(src_file)
         if img is None:
             print(f"Failed to read image: {src_file}")
+            #if len(src_file) > 10:
+            #    os.system(f"rm -rf {src_file}")
             return []
 
         #img = CImageUtils.resize(img,self.m_img_size)
-        alpha = CImageAlpha(img).get_raw_alpha()
-        CImageUtils.write_image(dest_file, alpha)  
-
+        try:
+            alpha = CImageAlpha(img).get_raw_alpha()
+            CImageUtils.write_image(dest_file, alpha)  
+        except:
+            print("cannot get_raw_alpha",src_file)
+            return []
         return [dest_file]
 
     def create_svd(self):
@@ -234,9 +241,11 @@ class CDatasetConstruct:
 
 def cala_mean():
     df_train = pd.read_csv("../AI-Face-FairnessBench/dataset/train.csv")
+    df_train["dataset"] = df_train["Image Path"].str.split("/").str[2]
+    #df_train = df_train[df_train['dataset'] == 'deepfakes'].reset_index(drop=True)
+
     df_real = df_train[df_train['Target'] == 0]
     df_fake = df_train[df_train['Target'] == 1]
-
     real_file = df_real.iloc[0]['Image Path']
     real,_ = CDatasetConstruct.compute_mean_std_image([real_file])
     CImageUtils.write_image("./images/real", real)
@@ -245,9 +254,9 @@ def cala_mean():
     fake,_ = CDatasetConstruct.compute_mean_std_image([fake_file])
     CImageUtils.write_image("./images/fake", fake)
 
-    mean_img,std_img = CDatasetConstruct.compute_mean_std_image(df_real['Image Path'])
-    CImageUtils.write_image("./images/real-mean", mean_img)
-    CImageUtils.write_image("./images/real-std", std_img)
+    #mean_img,std_img = CDatasetConstruct.compute_mean_std_image(df_real['Image Path'])
+    #CImageUtils.write_image("./images/real-mean", mean_img)
+    #CImageUtils.write_image("./images/real-std", std_img)
   
     mean_img,std_img = CDatasetConstruct.compute_mean_std_image(df_fake['Image Path'])
     CImageUtils.write_image("./images/fake-mean", mean_img)                    

@@ -52,6 +52,7 @@ class CImageUtils:
     def read_image(file_name):
         img = cv2.imread(file_name, cv2.IMREAD_UNCHANGED)
         if img is None:
+            return None
             raise FileNotFoundError(f"Failed to read EXR: {file_name}")
         return img.astype(np.float32)
 

@@ -29,7 +29,8 @@ def process_one_batch(params,indexes):
     dest_root = params['dest_root']
     dataset = params['dataset']
     df_data = params['data']
-    all_result = []   
+    all_result = []
+    last_file_name = ""
     try:
         for index in indexes:
             item = df_data.iloc[index].to_dict()
@@ -48,9 +49,10 @@ def process_one_batch(params,indexes):
             for f in dest_file_list:
                 item['new_file'] = f
                 all_result.append(item.copy())
+            last_file_name = item['Image Path']
 
     except Exception:
-        logging.exception("failed %d", index)
+        logging.exception(f"failed:{last_file_name}")
 
     return all_result
 
